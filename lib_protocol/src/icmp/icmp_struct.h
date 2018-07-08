@@ -17,9 +17,9 @@ struct ICMP_TIMER {
 	/**< 取消定时任务 */
 	time_t (*cancel)(ICMP_TIMER* timer, ICMP_PKT* pkt);
 	/**< 查找并删除定时任务 */
-	ICMP_PKT* (*find_delete)(ICMP_TIMER* timer, unsigned short i_seq);
+	ICMP_PKT* (*find_delete)(ICMP_TIMER* timer, ICMP_HOST* host, unsigned short i_seq);
 	/**< 弹出下一个定时任务 */
-	ICMP_PKT* (*popup)(ICMP_TIMER* timer);                    
+	ICMP_PKT* (*popup)(ICMP_TIMER* timer, ICMP_HOST* host);
 
 	ACL_RING timer_header;      /**< 定时任务的链表头 */
 	time_t present;             /**< 当前时间 */

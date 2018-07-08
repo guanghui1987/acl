@@ -70,7 +70,7 @@ static time_t timer_cancel(ICMP_TIMER* timer, ICMP_PKT *pkt)
 	return (time_left);
 }
 
-static ICMP_PKT* timer_find_delete(ICMP_TIMER* timer, unsigned short seq)
+static ICMP_PKT* timer_find_delete(ICMP_TIMER* timer, ICMP_HOST* host, unsigned short seq)
 {
 	ACL_RING_ITER iter;
 	time_t  time_left = -1;
@@ -78,7 +78,8 @@ static ICMP_PKT* timer_find_delete(ICMP_TIMER* timer, unsigned short seq)
 
 	acl_ring_foreach(iter, &timer->timer_header) {
 		TimerItem *pItem = RING_TO_TIMER(iter.ptr);
-		if (pItem->pkt->hdr.seq == seq) {
+		if (host == pItem->pkt->host && 
+			pItem->pkt->hdr.seq == seq) {
 			pkt = pItem->pkt;
 
 			if ((time_left = pItem->when - timer->present) < 0)
@@ -92,10 +93,11 @@ static ICMP_PKT* timer_find_delete(ICMP_TIMER* timer, unsigned short seq)
 	return (pkt);
 }
 
-static ICMP_PKT* timer_popup(ICMP_TIMER* timer)
+static ICMP_PKT* timer_popup(ICMP_TIMER* timer, ICMP_HOST* host)
 {
+	ACL_RING_ITER iter;
 	TimerItem *pTimerItem;
-	ICMP_PKT *pkt;
+	ICMP_PKT *pkt = NULL;
 
 	time(&timer->present);
 
@@ -103,12 +105,27 @@ static ICMP_PKT* timer_popup(ICMP_TIMER* timer)
 	if (pTimerItem == NULL)
 		return (NULL);
 
-	if (pTimerItem->when > timer->present)
-		return (NULL);
+	//if (pTimerItem->when > timer->present)
+	//	return (NULL);
+	//
+	//acl_ring_detach(&pTimerItem->entry);		/* first this */
+	//pkt = pTimerItem->pkt;
+	//acl_myfree(pTimerItem);
 
-	acl_ring_detach(&pTimerItem->entry);		/* first this */
-	pkt = pTimerItem->pkt;
-	acl_myfree(pTimerItem);
+	//return (pkt);
+
+	acl_ring_foreach(iter, &timer->timer_header) {
+		TimerItem *pItem = RING_TO_TIMER(iter.ptr);
+		if (host == pItem->pkt->host &&
+			pTimerItem->when <= timer->present) {
+
+			pkt = pItem->pkt;
+
+			acl_ring_detach(iter.ptr);
+			acl_myfree(pItem);
+			break;
+		}
+	}
 
 	return (pkt);
 }

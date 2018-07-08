@@ -17,8 +17,10 @@ static void check_timer(int event_type acl_unused,
 	if (chat == NULL)
 		acl_msg_fatal("%s(%d): chat null", myname, __LINE__);
 
+	boolean is_need_check_timer = 1;
+
 	while (1) {
-		ICMP_PKT *pkt = (ICMP_PKT*) chat->timer->popup(chat->timer);
+		ICMP_PKT *pkt = (ICMP_PKT*) chat->timer->popup(chat->timer, host);
 		if (pkt == NULL)
 			break;
 
@@ -32,15 +34,20 @@ static void check_timer(int event_type acl_unused,
 
 			/* 已完成主机检测数加1 */
 			chat->cnt++;
-		}
 
-		/* 定时发送下一个请求数据包 */
-		delay_send_pkt(host, host->pkts[host->ipkt++], 0);
+			is_need_check_timer = 0;
+		}
+		else
+		{
+			/* 定时发送下一个请求数据包 */
+			delay_send_pkt(host, host->pkts[host->ipkt++], 0);
+		}
 	}
 
 	/* 启动下一次定时器 */
-	acl_aio_request_timer(chat->aio, check_timer,
-		host, chat->check_inter, 0);
+	if (is_need_check_timer)
+		acl_aio_request_timer(chat->aio, check_timer,
+			host, chat->check_inter, 0);
 }
 
 static void send_pkt(ICMP_HOST *host, ICMP_PKT *pkt)
@@ -52,6 +59,7 @@ static void send_pkt(ICMP_HOST *host, ICMP_PKT *pkt)
 
 	/* 组建发送数据包 */
 	icmp_pkt_build(pkt, chat->seq++);
+	gettimeofday(&pkt->stamp, NULL);
 
 	/* 指定当前包目的主机地址 */
 	chat->is->dest = host->dest;
@@ -161,7 +169,7 @@ static int read_ready_fn(ACL_ASTREAM *astream, void *arg,
 		READ_RETURN(0);
 
 	/* 读到所需数据，取消该发送包的读超时定时器 */
-	pkt_src = chat->timer->find_delete(chat->timer, pkt.hdr.seq);
+	pkt_src = chat->timer->find_delete(chat->timer, host, pkt.hdr.seq);
 
 	if (pkt_src == NULL) {
 		acl_msg_warn("%s(%d): seq(%d) not found",
@@ -178,6 +186,9 @@ static int read_ready_fn(ACL_ASTREAM *astream, void *arg,
 		if (host->stat_finish)
 			host->stat_finish(host, host->arg);
 		chat->cnt++;
+
+		acl_aio_cancel_timer(chat->aio, check_timer, host);
+
 		READ_RETURN(0);
 	}
 
@@ -217,9 +228,11 @@ void icmp_chat_aio_add(ICMP_CHAT *chat, ICMP_HOST *host)
 		ACL_AIO_CTL_TIMEOUT, 0,  /* 初始化时先设置读超时为 0 */
 		ACL_AIO_CTL_END);
 
-	chat->timer = icmp_timer_new();
+	if (!chat->timer) {
+		chat->timer = icmp_timer_new();
 
-	chat->check_inter = 2000000;	/* one second check timer */
+		chat->check_inter = 1200000;	/* one second check timer */
+	}
 	acl_aio_request_timer(chat->aio, check_timer, host,
 		chat->check_inter, 0);
 
